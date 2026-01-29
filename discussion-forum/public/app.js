@@ -5,6 +5,8 @@ let currentUserId =
   "user_" + Math.random().toString(36).substr(2, 9);
 localStorage.setItem("userId", currentUserId);
 
+let deletePostId = null;
+
 // DOM Elements
 const newPostBtn = document.getElementById("newPostBtn");
 const newPostModal = document.getElementById("newPostModal");
@@ -13,6 +15,13 @@ const newPostForm = document.getElementById("newPostForm");
 const postsContainer = document.getElementById("postsContainer");
 const searchInput = document.getElementById("searchInput");
 const emptyState = document.getElementById("emptyState");
+const editPostModal = document.getElementById("editPostModal");
+const editPostForm = document.getElementById("editPostForm");
+const cancelEditBtn = document.getElementById("cancelEditBtn");
+const deleteModal = document.getElementById("deleteModal");
+const cancelDeleteBtn = document.getElementById("cancelDeleteBtn");
+const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
+const loadingOverlay = document.getElementById("loadingOverlay");
 
 // Load posts on page load
 document.addEventListener("DOMContentLoaded", loadPosts);
@@ -34,18 +43,80 @@ newPostModal.addEventListener("click", (e) => {
   }
 });
 
+cancelEditBtn.addEventListener("click", () => {
+  editPostModal.style.display = "none";
+  editPostForm.reset();
+});
+
+editPostModal.addEventListener("click", (e) => {
+  if (e.target === editPostModal) {
+    editPostModal.style.display = "none";
+    editPostForm.reset();
+  }
+});
+
+cancelDeleteBtn.addEventListener("click", () => {
+  deleteModal.style.display = "none";
+  deletePostId = null;
+});
+
+deleteModal.addEventListener("click", (e) => {
+  if (e.target === deleteModal) {
+    deleteModal.style.display = "none";
+    deletePostId = null;
+  }
+});
+
+confirmDeleteBtn.addEventListener("click", confirmDelete);
+
 newPostForm.addEventListener("submit", createPost);
+editPostForm.addEventListener("submit", updatePost);
 searchInput.addEventListener("input", filterPosts);
+
+// Toast Notification
+function showToast(message, type = "success") {
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+
+  const container = document.getElementById("toastContainer");
+  container.appendChild(toast);
+
+  setTimeout(() => toast.classList.add("show"), 10);
+
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// Loading State
+function setLoading(isLoading) {
+  loadingOverlay.style.display = isLoading ? "flex" : "none";
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
 
 // Load Posts
 async function loadPosts() {
   try {
+    setLoading(true);
     const response = await fetch(API_URL);
+    if (!response.ok) throw new Error("Failed to load posts");
+    
     const posts = await response.json();
     displayPosts(posts);
     updateStats(posts);
   } catch (error) {
     console.error("Error loading posts:", error);
+    showToast("Failed to load posts. Please try again.", "error");
+  } finally {
+    setLoading(false);
   }
 }
 
@@ -60,6 +131,7 @@ async function createPost(e) {
   };
 
   try {
+    setLoading(true);
     const response = await fetch(API_URL, {
       method: "POST",
       headers: {
@@ -68,13 +140,108 @@ async function createPost(e) {
       body: JSON.stringify(postData),
     });
 
+    const data = await response.json();
+
     if (response.ok) {
       newPostModal.style.display = "none";
       newPostForm.reset();
+      showToast("Post created successfully!", "success");
       loadPosts();
+    } else {
+      showToast(data.message || "Failed to create post", "error");
     }
   } catch (error) {
     console.error("Error creating post:", error);
+    showToast("Failed to create post. Please try again.", "error");
+  } finally {
+    setLoading(false);
+  }
+}
+
+// Edit Post
+function editPost(postId) {
+  fetch(`${API_URL}/${postId}`)
+    .then((res) => res.json())
+    .then((post) => {
+      document.getElementById("editPostId").value = post._id;
+      document.getElementById("editPostTitle").value = post.title;
+      document.getElementById("editPostContent").value = post.content;
+      editPostModal.style.display = "flex";
+    })
+    .catch((error) => {
+      console.error("Error fetching post:", error);
+      showToast("Failed to load post details", "error");
+    });
+}
+
+// Update Post
+async function updatePost(e) {
+  e.preventDefault();
+
+  const postId = document.getElementById("editPostId").value;
+  const postData = {
+    title: document.getElementById("editPostTitle").value,
+    content: document.getElementById("editPostContent").value,
+  };
+
+  try {
+    setLoading(true);
+    const response = await fetch(`${API_URL}/${postId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(postData),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      editPostModal.style.display = "none";
+      editPostForm.reset();
+      showToast("Post updated successfully!", "success");
+      loadPosts();
+    } else {
+      showToast(data.message || "Failed to update post", "error");
+    }
+  } catch (error) {
+    console.error("Error updating post:", error);
+    showToast("Failed to update post. Please try again.", "error");
+  } finally {
+    setLoading(false);
+  }
+}
+
+// Delete Post
+function deletePost(postId) {
+  deletePostId = postId;
+  deleteModal.style.display = "flex";
+}
+
+async function confirmDelete() {
+  if (!deletePostId) return;
+
+  try {
+    setLoading(true);
+    const response = await fetch(`${API_URL}/${deletePostId}`, {
+      method: "DELETE",
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      deleteModal.style.display = "none";
+      deletePostId = null;
+      showToast("Post deleted successfully!", "success");
+      loadPosts();
+    } else {
+      showToast(data.message || "Failed to delete post", "error");
+    }
+  } catch (error) {
+    console.error("Error deleting post:", error);
+    showToast("Failed to delete post. Please try again.", "error");
+  } finally {
+    setLoading(false);
   }
 }
 
@@ -93,10 +260,15 @@ function displayPosts(posts) {
   posts.forEach((post) => {
     const likeBtn = document.getElementById(`like-${post._id}`);
     const commentBtn = document.getElementById(`comment-${post._id}`);
+    const editBtn = document.getElementById(`edit-${post._id}`);
+    const deleteBtn = document.getElementById(`delete-${post._id}`);
 
     if (likeBtn) likeBtn.addEventListener("click", () => toggleLike(post._id));
     if (commentBtn)
       commentBtn.addEventListener("click", () => toggleComments(post._id));
+    if (editBtn) editBtn.addEventListener("click", () => editPost(post._id));
+    if (deleteBtn)
+      deleteBtn.addEventListener("click", () => deletePost(post._id));
 
     const commentForm = document.getElementById(`comment-form-${post._id}`);
     if (commentForm) {
@@ -120,12 +292,12 @@ function createPostHTML(post) {
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                     <circle cx="12" cy="7" r="4"></circle>
                 </svg>
-                <span class="comment-author">${comment.author}</span>
+                <span class="comment-author">${escapeHtml(comment.author)}</span>
                 <span class="comment-time">${formatTime(
                   comment.timestamp
                 )}</span>
             </div>
-            <p class="comment-content">${comment.content}</p>
+            <p class="comment-content">${escapeHtml(comment.content)}</p>
         </div>
     `
     )
@@ -134,14 +306,30 @@ function createPostHTML(post) {
   return `
         <div class="post-card" data-post-id="${post._id}">
             <div class="post-header">
-                <h3 class="post-title">${post.title}</h3>
+                <div class="post-header-top">
+                    <h3 class="post-title">${escapeHtml(post.title)}</h3>
+                    <div class="post-actions-menu">
+                        <button class="action-btn-icon" id="edit-${post._id}" title="Edit post">
+                            <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                        </button>
+                        <button class="action-btn-icon action-btn-delete" id="delete-${post._id}" title="Delete post">
+                            <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="m19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
                 <div class="post-meta">
                     <div class="meta-item">
                         <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                             <circle cx="12" cy="7" r="4"></circle>
                         </svg>
-                        <span>${post.author}</span>
+                        <span>${escapeHtml(post.author)}</span>
                     </div>
                     <div class="meta-item">
                         <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -152,7 +340,7 @@ function createPostHTML(post) {
                     </div>
                 </div>
             </div>
-            <p class="post-content">${post.content}</p>
+            <p class="post-content">${escapeHtml(post.content)}</p>
             <div class="post-actions">
                 <button class="action-btn ${isLiked ? "liked" : ""}" id="like-${
     post._id
@@ -203,9 +391,13 @@ async function toggleLike(postId) {
 
     if (response.ok) {
       loadPosts();
+    } else {
+      const data = await response.json();
+      showToast(data.message || "Failed to update like", "error");
     }
   } catch (error) {
     console.error("Error toggling like:", error);
+    showToast("Failed to update like. Please try again.", "error");
   }
 }
 
@@ -225,6 +417,7 @@ async function addComment(postId) {
   const content = document.getElementById(`comment-content-${postId}`).value;
 
   try {
+    setLoading(true);
     const response = await fetch(`${API_URL}/${postId}/comments`, {
       method: "POST",
       headers: {
@@ -233,12 +426,20 @@ async function addComment(postId) {
       body: JSON.stringify({ author, content }),
     });
 
+    const data = await response.json();
+
     if (response.ok) {
+      showToast("Comment added successfully!", "success");
       loadPosts();
       document.getElementById(`comments-${postId}`).style.display = "block";
+    } else {
+      showToast(data.message || "Failed to add comment", "error");
     }
   } catch (error) {
     console.error("Error adding comment:", error);
+    showToast("Failed to add comment. Please try again.", "error");
+  } finally {
+    setLoading(false);
   }
 }
 
