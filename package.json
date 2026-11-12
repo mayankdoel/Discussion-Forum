@@ -1,0 +1,21 @@
+{
+  "name": "discussion-forum",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Online Discussion Forum",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@netlify/database": "^2.0.3",
+    "drizzle-orm": "^1.0.0-beta.22",
+    "express": "^5.3.0",
+    "express-validator": "^7.3.2",
+    "helmet": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "drizzle-kit": "^1.0.0-beta.22"
+  }
+}

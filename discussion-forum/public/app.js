@@ -1,5 +1,5 @@
 // app.js
-const API_URL = "http://localhost:5000/api/posts";
+const API_URL = "/api/posts";
 let currentUserId =
   localStorage.getItem("userId") ||
   "user_" + Math.random().toString(36).substr(2, 9);
